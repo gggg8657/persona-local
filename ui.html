@@ -1,0 +1,72 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>persona local</title>
+<style>
+  :root{--bg:#fdf7f4;--fg:#2b2b2b;--muted:#8a8a8a;--line:#eadfd8;--acc:#e8637a;--me:#ffe3e8;--bot:#fff}
+  *{box-sizing:border-box}body{font:15px/1.6 -apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;background:var(--bg);color:var(--fg);margin:0;height:100vh;display:grid;grid-template-columns:230px 1fr 260px}
+  @media(max-width:900px){body{grid-template-columns:1fr}aside{display:none}}
+  aside{border-right:1px solid var(--line);padding:14px;overflow:auto;background:#fff}aside.r{border-right:none;border-left:1px solid var(--line)}
+  h1{font-size:17px;margin:0 0 10px}h1 small{font-weight:400;color:var(--muted);font-size:12px;display:block}
+  .pc{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;cursor:pointer;display:flex;gap:10px;align-items:center}.pc.on{border-color:var(--acc);background:#fff5f7}
+  .pc .av{font-size:26px}.pc b{display:block;font-size:14px}.pc .bar{height:5px;background:#f1e4e4;border-radius:3px;margin-top:5px}.pc .bar i{display:block;height:5px;background:var(--acc);border-radius:3px}
+  main{display:flex;flex-direction:column;min-width:0}
+  .top{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;background:#fff}.top b{font-size:16px}.top small{color:var(--muted)}
+  #chat{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:8px}
+  .m{max-width:72%;padding:9px 13px;border-radius:16px;background:var(--bot);border:1px solid var(--line);white-space:pre-wrap;position:relative}
+  .m.me{align-self:flex-end;background:var(--me);border-color:#ffd0d8}.m time{display:block;font-size:10px;color:var(--muted);margin-top:3px}
+  .m button.sp{position:absolute;right:-30px;top:6px;border:none;background:none;cursor:pointer;font-size:15px}
+  .typing{color:var(--muted);font-size:13px;padding:0 16px 6px}
+  form{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--line);background:#fff}
+  input,textarea,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:10px}textarea{flex:1;resize:none;height:44px}
+  button.go{background:var(--acc);color:#fff;border:none;border-radius:10px;padding:0 18px;font:inherit;font-weight:600;cursor:pointer}button:disabled{opacity:.5}
+  h3{font-size:13px;color:var(--muted);margin:14px 0 6px}
+  .f{display:flex;gap:6px;align-items:center;font-size:13px;margin:3px 0}.f input{flex:1;padding:4px 7px;font-size:12px}.f button{border:none;background:none;cursor:pointer;color:var(--muted)}
+  .set label{display:block;font-size:12px;color:var(--muted);margin-top:8px}.set input[type=range]{width:100%}
+  .link{font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline}
+</style>
+<aside><h1>persona <small>AI 캐릭터 대화 · 토이</small></h1><div id="list"></div></aside>
+<main>
+  <div class="top"><span id="tav" style="font-size:24px"></span><div><b id="ttl">페르소나를 고르세요</b><br><small id="tst"></small></div><span style="flex:1"></span><span class="link" onclick="reset()">대화 초기화</span></div>
+  <div id="chat"></div><div class="typing" id="typing"></div>
+  <form onsubmit="return send(event)"><textarea id="in" placeholder="메시지 (Enter 전송, Shift+Enter 줄바꿈)"></textarea><button class="go" id="go">보내기</button></form>
+</main>
+<aside class="r">
+  <h3>🧠 기억 <span class="link" onclick="addFact()">+ 추가</span></h3><div id="facts"></div>
+  <div class="set"><h3>⚙️ 설정</h3>
+    <label>모델</label><select id="model"></select>
+    <label>말투 담백 ↔ 애교</label><input type="range" id="tone" min="0" max="2" value="1">
+    <label>답 길이 짧게 ↔ 길게</label><input type="range" id="len" min="0" max="2" value="1">
+    <div id="ttsnote" style="font-size:12px;color:var(--muted);margin-top:8px"></div>
+  </div>
+</aside>
+<script>
+const $=id=>document.getElementById(id), MODEL_DEFAULT=%MODEL%;
+let P=[], cur=null, TTS=false, FACTS=[];
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const t=ts=>ts?ts.slice(11,16):'';
+fetch('api/models').then(r=>r.json()).then(ms=>$('model').innerHTML=ms.map(m=>`<option ${m===MODEL_DEFAULT?'selected':''}>${m}</option>`).join('')).catch(()=>{});
+async function list(){P=await fetch('api/personas').then(r=>r.json());$('list').innerHTML=P.map(p=>`<div class="pc ${cur===p.name?'on':''}" onclick="pick('${p.name}')"><span class="av">${p.avatar}</span><div style="flex:1"><b>${esc(p.title)}</b><div class="bar"><i style="width:${p.stat.affinity}%"></i></div></div></div>`).join('')}
+function bubble(role,text,ts){const d=document.createElement('div');d.className='m'+(role==='user'?' me':'');d.innerHTML=esc(text)+`<time>${t(ts)}</time>`+(role!=='user'&&TTS?`<button class="sp" title="듣기">🔊</button>`:'');if(role!=='user'&&TTS)d.querySelector('.sp').onclick=()=>speak(text);$('chat').appendChild(d);$('chat').scrollTop=1e9;return d}
+async function pick(name){cur=name;const p=P.find(x=>x.name===name);$('tav').textContent=p.avatar;$('ttl').textContent=p.title;$('chat').innerHTML='';const s=await fetch('api/state/'+name).then(r=>r.json());TTS=s.tts;$('ttsnote').textContent=TTS?'🔊 TTS 연결됨':'TTS 서버 없음 (TTS_BASE_URL 설정 시 🔊 버튼)';s.history.forEach(m=>bubble(m.role,m.content,m.ts));if(s.greet)bubble('assistant',s.greet,new Date().toISOString());stat(s.stat);facts(s.facts);list();$('in').focus()}
+function stat(s){$('tst').textContent=`호감도 ${s.affinity} · 대화 ${s.turns}턴`}
+function facts(fs){FACTS=fs;$('facts').innerHTML=fs.map(f=>`<div class="f"><input value="${esc(f.key)}" data-k="${esc(f.key)}" disabled><input value="${esc(f.value)}" onchange="setFact('${esc(f.key)}',this.value)"><button onclick="delFact('${esc(f.key)}')">✕</button></div>`).join('')||'<div style="font-size:12px;color:var(--muted)">대화하면서 자동으로 쌓입니다</div>'}
+async function send(e){e.preventDefault();const text=$('in').value.trim();if(!text||!cur)return false;$('in').value='';$('go').disabled=true;bubble('user',text,new Date().toISOString());
+  const d=bubble('assistant','',new Date().toISOString());$('typing').textContent='…입력 중';let out='';
+  try{const r=await fetch('api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({persona:cur,text,model:$('model').value,tone:+$('tone').value,length:+$('len').value})});
+    const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+    while(true){const{value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf('\n\n'))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith('data: '))continue;const ev=JSON.parse(line.slice(6));
+      if(ev.token){out+=ev.token;d.firstChild.textContent=out;$('chat').scrollTop=1e9}
+      if(ev.error)throw new Error(ev.error);
+      if(ev.done){d.innerHTML=esc(ev.done.reply)+`<time>${t(new Date().toISOString())}</time>`+(TTS?'<button class="sp">🔊</button>':'');if(TTS)d.querySelector('.sp').onclick=()=>speak(ev.done.reply);stat(ev.done.stat);facts(ev.done.facts);list()}}}
+  }catch(err){d.textContent='오류: '+err.message}
+  $('typing').textContent='';$('go').disabled=false;$('in').focus();return false}
+$('in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('go').click()}});
+async function speak(text){const b=await fetch('api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({persona:cur,text})}).then(r=>r.ok?r.blob():null);if(b)new Audio(URL.createObjectURL(b)).play()}
+async function setFact(key,value){facts((await post('api/fact',{persona:cur,key,value})).facts)}
+async function delFact(key){facts((await post('api/fact_del',{persona:cur,key})).facts)}
+async function addFact(){const key=prompt('무엇을 기억할까요? (예: 생일)');if(!key)return;const value=prompt(key+' =');if(value!=null)setFact(key,value)}
+async function reset(){if(cur&&confirm('이 캐릭터와의 대화를 지울까요? (기억은 남습니다)')){await post('api/reset',{persona:cur});pick(cur)}}
+const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
+list();
+</script>
