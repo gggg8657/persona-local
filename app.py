@@ -7,6 +7,7 @@
 
 personas/*.md 한 파일 = 한 캐릭터 (frontmatter: name/title/avatar/voice/greeting, --- 뒤 = 시스템 프롬프트).
 """
+import base64
 import datetime
 import json
 import os
@@ -26,6 +27,8 @@ LLM_KEY = os.environ.get("LLM_API_KEY", "")
 NUM_CTX = int(os.environ.get("NUM_CTX", "8192"))
 PORT = int(os.environ.get("PORT", "8776"))
 TTS = os.environ.get("TTS_BASE_URL", "").rstrip("/")
+STT = os.environ.get("STT_BASE_URL", "http://localhost:8767/v1").rstrip("/")     # meeting-local 의 /v1/audio/transcriptions
+AVATAR = os.environ.get("AVATAR_URL", "http://localhost:8777/api/run")           # avatar-local (고화질 클립, 선택)
 HISTORY = 20          # ponytail: 최근 20턴만 모델에 넣음, 길어지면 요약 압축으로 승급
 GREET_AFTER_H = 8
 
@@ -63,7 +66,8 @@ def db():
     c.executescript("""
     CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, persona TEXT, role TEXT, content TEXT, ts TEXT);
     CREATE TABLE IF NOT EXISTS facts(persona TEXT, key TEXT, value TEXT, ts TEXT, PRIMARY KEY(persona, key));
-    CREATE TABLE IF NOT EXISTS stats(persona TEXT PRIMARY KEY, affinity INTEGER DEFAULT 0, turns INTEGER DEFAULT 0, last_ts TEXT);""")
+    CREATE TABLE IF NOT EXISTS stats(persona TEXT PRIMARY KEY, affinity INTEGER DEFAULT 0, turns INTEGER DEFAULT 0, last_ts TEXT);
+    CREATE TABLE IF NOT EXISTS mouth(persona TEXT PRIMARY KEY, x REAL, y REAL, w REAL);""")
     return c
 
 
@@ -219,6 +223,22 @@ def greet(persona, model=MODEL):
     return g
 
 
+def stt(audio_b64):
+    """STT_BASE_URL 로 전달 (JSON base64). 반환 text."""
+    req = urllib.request.Request(STT + "/audio/transcriptions", json.dumps({"file": audio_b64}).encode(), {"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=600) as r:
+        return json.load(r).get("text", "")
+
+
+def up(url):
+    try:
+        urllib.request.urlopen(url, timeout=1.5); return True
+    except urllib.error.HTTPError:
+        return True
+    except Exception:
+        return False
+
+
 def tts(text, voice):
     body = {"model": "tts", "input": text, "voice": voice or "KR", "response_format": "mp3"}
     with urllib.request.urlopen(urllib.request.Request(TTS + "/audio/speech", json.dumps(body).encode(), {"Content-Type": "application/json"}), timeout=600) as r:
@@ -248,8 +268,14 @@ class H(BaseHTTPRequestHandler):
             m = re.fullmatch(r"/api/state/(\w+)", p)
             if m and m.group(1) in PERSONAS:
                 c = db()
+                mouth = c.execute("SELECT x,y,w FROM mouth WHERE persona=?", (m.group(1),)).fetchone()
                 return self._send({"history": history(c, m.group(1), 200), "facts": facts(c, m.group(1)), "stat": stat(c, m.group(1)),
-                                   "greet": greet(m.group(1)), "tts": bool(TTS)})
+                                   "greet": greet(m.group(1)), "tts": bool(TTS), "stt": up(STT + "/models"), "avatar": up(AVATAR.rsplit("/api", 1)[0] + "/"),
+                                   "mouth": dict(mouth) if mouth else None, "image": os.path.exists(os.path.join(ROOT, "personas", m.group(1) + ".png"))})
+            m = re.fullmatch(r"/api/image/(\w+)", p)
+            if m and m.group(1) in PERSONAS:
+                with open(os.path.join(ROOT, "personas", m.group(1) + ".png"), "rb") as f:
+                    return self._send(f.read(), "image/png")
             self._send(HTML.replace("%MODEL%", json.dumps(MODEL)).encode(), "text/html; charset=utf-8")
         except Exception as e:
             self._send({"error": f"{type(e).__name__}: {e}"}, code=500)
@@ -268,11 +294,31 @@ class H(BaseHTTPRequestHandler):
                 except Exception as e:
                     emit({"error": f"{type(e).__name__}: {e}"})
                 return
+            if p == "/api/stt":
+                if not req.get("audio"):
+                    raise ValueError("audio 없음")
+                return self._send({"text": stt(req["audio"])})
             c = db()
             persona = req.get("persona", "")
             if persona not in PERSONAS:
                 return self._send({"error": "없는 페르소나"}, code=400)
+            if p == "/api/avatar":  # 고화질 클립: avatar-local 에 그대로 넘기고 run_id 만 돌려줌 (영상은 avatar-local 에서 재생)
+                with open(os.path.join(ROOT, "personas", persona + ".png"), "rb") as f:
+                    body = {"photo_b64": base64.b64encode(f.read()).decode(), "photo_name": persona + ".png", "text": req.get("text", ""), "consent": True}
+                r = urllib.request.urlopen(urllib.request.Request(AVATAR, json.dumps(body).encode(), {"Content-Type": "application/json"}), timeout=3600)
+                run_id = None
+                for line in r:
+                    if line.startswith(b"data: "):
+                        ev = json.loads(line[6:])
+                        if "error" in ev:
+                            raise RuntimeError(ev["error"])
+                        if "done" in ev:
+                            run_id = ev["done"]["run_id"]
+                return self._send({"run_id": run_id, "video": AVATAR.rsplit("/api", 1)[0] + f"/api/runs/{run_id}/final.mp4"})
             with c:
+                if p == "/api/mouth":
+                    c.execute("INSERT OR REPLACE INTO mouth VALUES(?,?,?,?)", (persona, float(req["x"]), float(req["y"]), float(req.get("w", 0.08))))
+                    return self._send({"ok": True})
                 if p == "/api/fact":
                     if not req.get("key"):
                         raise ValueError("key 없음")
@@ -304,5 +350,5 @@ if __name__ == "__main__":
         r = chat(who, text, emit=lambda ev: print(ev["token"], end="", flush=True) if "token" in ev else None)
         print(f"\n(호감도 {r['stat']['affinity']}" + (f" · 새 기억 {', '.join(f['key'] for f in r['new_facts'])}" if r["new_facts"] else "") + ")")
         sys.exit(0)
-    print(f"persona local → http://localhost:{PORT}  (model={MODEL}, llm={LLM_API} {LLM_BASE}, tts={TTS or '없음'}, personas={len(PERSONAS)})")
+    print(f"persona local → http://localhost:{PORT}  (model={MODEL}, llm={LLM_API} {LLM_BASE}, tts={TTS or '없음'}, stt={STT}, personas={len(PERSONAS)})")
     ThreadingHTTPServer(("", PORT), H).serve_forever()

@@ -24,12 +24,19 @@
   .f{display:flex;gap:6px;align-items:center;font-size:13px;margin:3px 0}.f input{flex:1;padding:4px 7px;font-size:12px}.f button{border:none;background:none;cursor:pointer;color:var(--muted)}
   .set label{display:block;font-size:12px;color:var(--muted);margin-top:8px}.set input[type=range]{width:100%}
   .link{font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline}
+  #stage{height:300px;background:linear-gradient(#fff,#fdf0ec);border-bottom:1px solid var(--line);display:flex;justify-content:center;align-items:flex-end;position:relative;overflow:hidden}
+  #av{height:100%;cursor:crosshair;animation:sway 4s ease-in-out infinite;transform-origin:50% 100%}@keyframes sway{0%,100%{transform:translateY(0) rotate(-.4deg)}50%{transform:translateY(-4px) rotate(.4deg)}}
+  #hint{position:absolute;left:10px;top:8px;font-size:11px;color:var(--muted)}#spk{position:absolute;right:10px;top:8px;font-size:11px;color:var(--acc)}
+  button.mic{border:1px solid var(--line);background:#fff;border-radius:10px;padding:0 14px;font-size:18px;cursor:pointer;user-select:none}button.mic.rec{background:var(--acc);color:#fff;border-color:var(--acc)}
+  .auto{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px}
 </style>
 <aside><h1>persona <small>AI 캐릭터 대화 · 토이</small></h1><div id="list"></div></aside>
 <main>
   <div class="top"><span id="tav" style="font-size:24px"></span><div><b id="ttl">페르소나를 고르세요</b><br><small id="tst"></small></div><span style="flex:1"></span><span class="link" onclick="reset()">대화 초기화</span></div>
+  <div id="stage" hidden><canvas id="av"></canvas><span id="hint">입 위치를 한 번 클릭해 주세요</span><span id="spk"></span></div>
   <div id="chat"></div><div class="typing" id="typing"></div>
-  <form onsubmit="return send(event)"><textarea id="in" placeholder="메시지 (Enter 전송, Shift+Enter 줄바꿈)"></textarea><button class="go" id="go">보내기</button></form>
+  <form onsubmit="return send(event)"><button type="button" class="mic" id="mic" title="누르고 말하기" hidden>🎤</button><textarea id="in" placeholder="메시지 (Enter 전송, Shift+Enter 줄바꿈)"></textarea><button class="go" id="go">보내기</button></form>
+  <div class="auto" style="padding:0 16px 8px"><label id="autoL" hidden><input type="checkbox" id="auto"> 자동 대화 (답이 끝나면 다시 듣기, 1.5초 침묵에 전송)</label><span style="flex:1"></span><span class="link" id="clipBtn" hidden onclick="clip()">고화질 클립</span></div>
 </main>
 <aside class="r">
   <h3>🧠 기억 <span class="link" onclick="addFact()">+ 추가</span></h3><div id="facts"></div>
@@ -42,13 +49,14 @@
 </aside>
 <script>
 const $=id=>document.getElementById(id), MODEL_DEFAULT=%MODEL%;
-let P=[], cur=null, TTS=false, FACTS=[];
+let P=[], cur=null, TTS=false, STT=false, FACTS=[], MOUTH=null, IMG=null, lastReply='';
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const t=ts=>ts?ts.slice(11,16):'';
 fetch('api/models').then(r=>r.json()).then(ms=>$('model').innerHTML=ms.map(m=>`<option ${m===MODEL_DEFAULT?'selected':''}>${m}</option>`).join('')).catch(()=>{});
 async function list(){P=await fetch('api/personas').then(r=>r.json());$('list').innerHTML=P.map(p=>`<div class="pc ${cur===p.name?'on':''}" onclick="pick('${p.name}')"><span class="av">${p.avatar}</span><div style="flex:1"><b>${esc(p.title)}</b><div class="bar"><i style="width:${p.stat.affinity}%"></i></div></div></div>`).join('')}
 function bubble(role,text,ts){const d=document.createElement('div');d.className='m'+(role==='user'?' me':'');d.innerHTML=esc(text)+`<time>${t(ts)}</time>`+(role!=='user'&&TTS?`<button class="sp" title="듣기">🔊</button>`:'');if(role!=='user'&&TTS)d.querySelector('.sp').onclick=()=>speak(text);$('chat').appendChild(d);$('chat').scrollTop=1e9;return d}
-async function pick(name){cur=name;const p=P.find(x=>x.name===name);$('tav').textContent=p.avatar;$('ttl').textContent=p.title;$('chat').innerHTML='';const s=await fetch('api/state/'+name).then(r=>r.json());TTS=s.tts;$('ttsnote').textContent=TTS?'🔊 TTS 연결됨':'TTS 서버 없음 (TTS_BASE_URL 설정 시 🔊 버튼)';s.history.forEach(m=>bubble(m.role,m.content,m.ts));if(s.greet)bubble('assistant',s.greet,new Date().toISOString());stat(s.stat);facts(s.facts);list();$('in').focus()}
+async function pick(name){cur=name;const p=P.find(x=>x.name===name);$('tav').textContent=p.avatar;$('ttl').textContent=p.title;$('chat').innerHTML='';const s=await fetch('api/state/'+name).then(r=>r.json());TTS=s.tts;STT=s.stt;MOUTH=s.mouth;$('ttsnote').textContent=(TTS?'🔊 TTS 연결됨':'TTS 없음')+' · '+(STT?'🎤 STT 연결됨':'STT 없음 (meeting-local :8767)');$('mic').hidden=!STT;$('autoL').hidden=!(STT&&TTS);$('clipBtn').hidden=!s.avatar;
+  $('stage').hidden=!s.image;if(s.image){IMG=new Image();IMG.onload=draw;IMG.src='api/image/'+name+'?'+Date.now()}$('hint').textContent=MOUTH?'':'입 위치를 한 번 클릭해 주세요';s.history.forEach(m=>bubble(m.role,m.content,m.ts));if(s.greet)bubble('assistant',s.greet,new Date().toISOString());stat(s.stat);facts(s.facts);list();$('in').focus()}
 function stat(s){$('tst').textContent=`호감도 ${s.affinity} · 대화 ${s.turns}턴`}
 function facts(fs){FACTS=fs;$('facts').innerHTML=fs.map(f=>`<div class="f"><input value="${esc(f.key)}" data-k="${esc(f.key)}" disabled><input value="${esc(f.value)}" onchange="setFact('${esc(f.key)}',this.value)"><button onclick="delFact('${esc(f.key)}')">✕</button></div>`).join('')||'<div style="font-size:12px;color:var(--muted)">대화하면서 자동으로 쌓입니다</div>'}
 async function send(e){e.preventDefault();const text=$('in').value.trim();if(!text||!cur)return false;$('in').value='';$('go').disabled=true;bubble('user',text,new Date().toISOString());
@@ -58,11 +66,40 @@ async function send(e){e.preventDefault();const text=$('in').value.trim();if(!te
     while(true){const{value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;while((i=buf.indexOf('\n\n'))>=0){const line=buf.slice(0,i);buf=buf.slice(i+2);if(!line.startsWith('data: '))continue;const ev=JSON.parse(line.slice(6));
       if(ev.token){out+=ev.token;d.firstChild.textContent=out;$('chat').scrollTop=1e9}
       if(ev.error)throw new Error(ev.error);
-      if(ev.done){d.innerHTML=esc(ev.done.reply)+`<time>${t(new Date().toISOString())}</time>`+(TTS?'<button class="sp">🔊</button>':'');if(TTS)d.querySelector('.sp').onclick=()=>speak(ev.done.reply);stat(ev.done.stat);facts(ev.done.facts);list()}}}
+      if(ev.done){d.innerHTML=esc(ev.done.reply)+`<time>${t(new Date().toISOString())}</time>`+(TTS?'<button class="sp">🔊</button>':'');if(TTS)d.querySelector('.sp').onclick=()=>speak(ev.done.reply);stat(ev.done.stat);facts(ev.done.facts);list();lastReply=ev.done.reply;if(TTS&&(voiceTurn||$('auto').checked))await speak(ev.done.reply);voiceTurn=false;if($('auto').checked)startRec()}}}
   }catch(err){d.textContent='오류: '+err.message}
   $('typing').textContent='';$('go').disabled=false;$('in').focus();return false}
 $('in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('go').click()}});
-async function speak(text){const b=await fetch('api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({persona:cur,text})}).then(r=>r.ok?r.blob():null);if(b)new Audio(URL.createObjectURL(b)).play()}
+// ── 음성·아바타 ─────────────────────────────────────────────────────
+let AC=null, analyser=null, level=0, blink=0, eye={x:0,y:0}, voiceTurn=false;
+function ac(){if(!AC){AC=new (window.AudioContext||window.webkitAudioContext)();analyser=AC.createAnalyser();analyser.fftSize=512}return AC}
+async function speak(text){const b=await fetch('api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({persona:cur,text})}).then(r=>r.ok?r.blob():null);if(!b)return;
+  const a=new Audio(URL.createObjectURL(b));try{ac();const src=AC.createMediaElementSource(a);src.connect(analyser);analyser.connect(AC.destination);if(AC.state==='suspended')await AC.resume()}catch(e){}
+  $('spk').textContent='말하는 중…';await new Promise(res=>{a.onended=res;a.onerror=res;a.play().catch(res)});$('spk').textContent='';level=0}
+// 입 움직임: 재생 중 AnalyserNode RMS → 타원 높이
+function rms(){if(!analyser)return 0;const d=new Uint8Array(analyser.fftSize);analyser.getByteTimeDomainData(d);let s=0;for(const v of d){const x=(v-128)/128;s+=x*x}return Math.sqrt(s/d.length)}
+function draw(){const c=$('av');if(!IMG||!c)return;const H=c.parentElement.clientHeight||300,W=Math.round(H*IMG.width/IMG.height);if(c.width!==W||c.height!==H){c.width=W;c.height=H}
+  const g=c.getContext('2d');g.clearRect(0,0,W,H);g.drawImage(IMG,0,0,W,H);
+  if(MOUTH){level=level*0.6+rms()*0.4;const open=Math.min(1,level*6);const mx=MOUTH.x*W+eye.x*2,my=MOUTH.y*H+eye.y*2,mw=(MOUTH.w||0.08)*W;
+    g.fillStyle='#6b2a35';g.beginPath();g.ellipse(mx,my,mw/2,2+open*mw*0.45,0,0,Math.PI*2);g.fill();if(open>0.25){g.fillStyle='#f5d0d0';g.beginPath();g.ellipse(mx,my+open*mw*0.2,mw/4,1+open*mw*0.12,0,0,Math.PI*2);g.fill()}
+    if(blink>0){g.fillStyle='rgba(253,245,240,.9)';for(const dx of[-0.07,0.07]){g.beginPath();g.ellipse(mx+dx*W+eye.x,my-0.07*H+eye.y,0.03*W,0.02*H*blink,0,0,Math.PI*2);g.fill()}}}
+  requestAnimationFrame(draw)}
+setInterval(()=>{blink=1;setTimeout(()=>blink=0,120)},3000+Math.random()*3000);
+document.addEventListener('mousemove',e=>{eye.x=(e.clientX/innerWidth-0.5)*6;eye.y=(e.clientY/innerHeight-0.5)*4});
+$('av').onclick=async e=>{const r=e.target.getBoundingClientRect();MOUTH={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height,w:0.08};await post('api/mouth',{persona:cur,...MOUTH});$('hint').textContent='입 위치 저장됨 (다시 클릭하면 수정)'}
+// 🎤 누르고 말하기 + 자동 대화(침묵 1.5초 감지)
+let rec=null, chunks=[], silenceT=null, micStream=null;
+async function startRec(){if(rec&&rec.state==='recording')return;micStream=micStream||await navigator.mediaDevices.getUserMedia({audio:true});ac();const src=AC.createMediaStreamSource(micStream),an=AC.createAnalyser();an.fftSize=512;src.connect(an);
+  chunks=[];rec=new MediaRecorder(micStream);rec.ondataavailable=e=>chunks.push(e.data);rec.onstop=onStop;rec.start();$('mic').classList.add('rec');$('spk').textContent='듣는 중…';
+  let spoke=false,quiet=0;const tick=()=>{if(!rec||rec.state!=='recording')return;const d=new Uint8Array(an.fftSize);an.getByteTimeDomainData(d);let s=0;for(const v of d){const x=(v-128)/128;s+=x*x}const r=Math.sqrt(s/d.length);
+    if(r>0.02){spoke=true;quiet=0}else if(spoke){quiet+=100;if(quiet>=1500&&$('auto').checked)return stopRec()}silenceT=setTimeout(tick,100)};tick()}
+function stopRec(){clearTimeout(silenceT);if(rec&&rec.state==='recording')rec.stop();$('mic').classList.remove('rec')}
+async function onStop(){$('spk').textContent='받아쓰는 중…';const b=new Blob(chunks,{type:rec.mimeType||'audio/webm'});if(b.size<2000){$('spk').textContent='';if($('auto').checked)startRec();return}
+  const b64=await new Promise(res=>{const fr=new FileReader();fr.onload=()=>res(fr.result.split(',')[1]);fr.readAsDataURL(b)});
+  const j=await post('api/stt',{audio:b64});$('spk').textContent='';if(j.text&&j.text.trim()){$('in').value=j.text.trim();voiceTurn=true;$('go').click()}else if($('auto').checked)startRec()}
+$('mic').onmousedown=startRec;$('mic').onmouseup=stopRec;$('mic').ontouchstart=e=>{e.preventDefault();startRec()};$('mic').ontouchend=stopRec;
+$('auto').onchange=()=>{if($('auto').checked)startRec();else stopRec()};
+async function clip(){if(!lastReply)return alert('먼저 답변을 하나 받으세요');$('clipBtn').textContent='클립 생성 중… (수 분)';const j=await post('api/avatar',{persona:cur,text:lastReply});$('clipBtn').textContent='고화질 클립';if(j.video)window.open(j.video,'_blank')}
 async function setFact(key,value){facts((await post('api/fact',{persona:cur,key,value})).facts)}
 async function delFact(key){facts((await post('api/fact_del',{persona:cur,key})).facts)}
 async function addFact(){const key=prompt('무엇을 기억할까요? (예: 생일)');if(!key)return;const value=prompt(key+' =');if(value!=null)setFact(key,value)}
