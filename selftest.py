@@ -32,3 +32,28 @@ assert "api/" in open(os.path.join(app.ROOT, "ui.html"), encoding="utf-8").read(
 try: app.chat("nope", "x"); raise SystemExit("없는 페르소나는 거부돼야 함")
 except ValueError: pass
 print("selftest OK — personas:", ", ".join(app.PERSONAS))
+
+# ── 음성·아바타 경로 (가짜 STT/TTS 서버) ──────────────────────────────────
+import json, threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class Fake(BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self): self.send_response(200); self.end_headers(); self.wfile.write(b"{}")
+    def do_POST(self):
+        n = int(self.headers["Content-Length"]); body = self.rfile.read(n)
+        if self.path.endswith("/audio/transcriptions"):
+            assert json.loads(body)["file"] == "QUJD"; out = json.dumps({"text": "안녕 나 동주야"}, ensure_ascii=False).encode(); ct = "application/json"
+        else:
+            out = b"ID3fakemp3"; ct = "audio/mpeg"
+        self.send_response(200); self.send_header("Content-Type", ct); self.send_header("Content-Length", str(len(out))); self.end_headers(); self.wfile.write(out)
+srv = HTTPServer(("127.0.0.1", 0), Fake); threading.Thread(target=srv.serve_forever, daemon=True).start()
+app.STT = app.TTS = f"http://127.0.0.1:{srv.server_port}/v1"
+assert app.stt("QUJD") == "안녕 나 동주야" and app.tts("x", "KR").startswith(b"ID3") and app.up(app.STT + "/models")
+with app.db() as c:
+    c.execute("INSERT OR REPLACE INTO mouth VALUES('gf',0.5,0.22,0.08)")
+with app.db() as c:
+    assert dict(c.execute("SELECT x,y,w FROM mouth WHERE persona='gf'").fetchone()) == {"x": 0.5, "y": 0.22, "w": 0.08}
+assert all(os.path.exists(os.path.join(app.ROOT, "personas", n + ".png")) for n in app.PERSONAS)
+r3 = app.chat("gf", "텍스트 모드도 그대로", "fake")            # 음성 경로 추가 후 텍스트 경로 회귀 없음
+assert r3["reply"] and r3["stat"]["affinity"] == 3
+print("selftest OK — voice/avatar paths")

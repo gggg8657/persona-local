@@ -12,9 +12,22 @@ TTS_BASE_URL=http://localhost:8771/v1 python3 app.py   # tts-local 이 떠 있�
 | 환경변수 | 기본 | 설명 |
 |---|---|---|
 | `LLM_API` / `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` | ollama / :11434 / qwen3:8b | 다른 패키지와 동일 규약 |
-| `TTS_BASE_URL` | (없음) | OpenAI 호환 `/v1/audio/speech` (tts-local) |
+| `TTS_BASE_URL` | (없음) | OpenAI 호환 `/v1/audio/speech` (tts-local :8771) — 있으면 음성 답변·🔊 |
+| `STT_BASE_URL` | `http://localhost:8767/v1` | OpenAI 호환 `/v1/audio/transcriptions` (meeting-local) — 있으면 🎤 |
+| `AVATAR_URL` | `http://localhost:8777/api/run` | avatar-local 이 떠 있으면 "고화질 클립" 버튼 |
 | `WORKSPACE` | `_workspace/` | `persona.db`(대화·기억·호감도) 위치. 포털이 `AGENT_DATA/persona-local` 로 지정 |
 | `PORT` | 8776 | |
+
+## 음성 대화 + 아바타
+```bash
+(cd ../meeting-local && WHISPER_MODEL=small bash setup.sh)   # STT  :8767  (/v1/audio/transcriptions)
+(cd ../tts-local && bash setup.sh)                            # TTS  :8771  (/v1/audio/speech)
+TTS_BASE_URL=http://localhost:8771/v1 STT_BASE_URL=http://localhost:8767/v1 python3 app.py
+```
+- 🎤 **누르고 말하기** → 받아쓰기 → LLM → 답이 끝나면 캐릭터 목소리로 재생. **자동 대화** 체크 시 재생이 끝나면 다시 듣고, 1.5초 침묵에 전송(핸즈프리).
+- **아바타**: `personas/<name>.png` 전신 이미지(동봉은 실루엣 placeholder — 생성한 캐릭터 그림으로 교체, 실존 인물 사진 금지). 이미지를 한 번 클릭해 입 위치를 지정하면(캐릭터별 저장) 재생 중 소리 크기에 맞춰 입이 움직이고, 3~6초마다 깜빡이고, 몸이 살짝 흔들리고, 눈이 커서를 따라갑니다. 전부 canvas·Web Audio, 라이브러리 없음.
+- **고화질 클립**: avatar-local(:8777)이 떠 있으면 마지막 답변을 립싱크 mp4로 생성(수 분). 결과는 avatar-local 쪽에서 열립니다.
+- 전신 실사 동작(걷기·제스처)은 GPU 서버에서 붙일 자리입니다. 후보: MusePose(Apache-2.0, 포즈 기반), MimicMotion(Tencent, 연구용 라이선스 확인 필요), Champ(MIT, SMPL 기반), AnimateAnyone 재구현(Moore-AnimateAnyone, Apache-2.0). 여기서는 구현하지 않음.
 
 ## 동작
 - **페르소나**: `personas/*.md` 한 파일 = 한 캐릭터(frontmatter name/title/avatar/voice/greeting, `---` 아래가 시스템 프롬프트). 파일 추가하면 끝.
