@@ -4,13 +4,13 @@
 <title>persona local</title>
 <style>
   :root{--bg:#fdf7f4;--fg:#2b2b2b;--muted:#8a8a8a;--line:#eadfd8;--acc:#e8637a;--me:#ffe3e8;--bot:#fff}
-  *{box-sizing:border-box}body{font:15px/1.6 -apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;background:var(--bg);color:var(--fg);margin:0;height:100vh;display:grid;grid-template-columns:230px 1fr 260px}
+  *{box-sizing:border-box}[hidden]{display:none!important}body{font:15px/1.6 -apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;background:var(--bg);color:var(--fg);margin:0;height:100vh;display:grid;grid-template-columns:230px 1fr 260px}
   @media(max-width:900px){body{grid-template-columns:1fr}aside{display:none}}
   aside{border-right:1px solid var(--line);padding:14px;overflow:auto;background:#fff}aside.r{border-right:none;border-left:1px solid var(--line)}
   h1{font-size:17px;margin:0 0 10px}h1 small{font-weight:400;color:var(--muted);font-size:12px;display:block}
   .pc{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;cursor:pointer;display:flex;gap:10px;align-items:center}.pc.on{border-color:var(--acc);background:#fff5f7}
   .pc .av{font-size:26px}.pc b{display:block;font-size:14px}.pc .bar{height:5px;background:#f1e4e4;border-radius:3px;margin-top:5px}.pc .bar i{display:block;height:5px;background:var(--acc);border-radius:3px}
-  main{display:flex;flex-direction:column;min-width:0}
+  main{display:flex;flex-direction:column;min-width:0;height:100vh;overflow:hidden}
   .top{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;background:#fff}.top b{font-size:16px}.top small{color:var(--muted)}
   #chat{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:8px}
   .m{max-width:72%;padding:9px 13px;border-radius:16px;background:var(--bot);border:1px solid var(--line);white-space:pre-wrap;position:relative}
@@ -105,5 +105,5 @@ async function delFact(key){facts((await post('api/fact_del',{persona:cur,key}))
 async function addFact(){const key=prompt('무엇을 기억할까요? (예: 생일)');if(!key)return;const value=prompt(key+' =');if(value!=null)setFact(key,value)}
 async function reset(){if(cur&&confirm('이 캐릭터와의 대화를 지울까요? (기억은 남습니다)')){await post('api/reset',{persona:cur});pick(cur)}}
 const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(r=>r.json());
-list();
+list().then(()=>{const q=new URLSearchParams(location.search).get('pick')||location.hash.slice(1);if(q&&P.some(p=>p.name===q))pick(q)});
 </script>
