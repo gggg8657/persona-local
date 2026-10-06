@@ -147,7 +147,7 @@ ok "$MODEL"
 
 # ── 6. 자가검증 ──────────────────────────────────────────────────────────
 step "자가검증"
-spin "페르소나·기억·호감도·CLI" "$PY" selftest.py || die "selftest 실패 — personas/ 가 빠졌는지 확인"
+spin "페르소나·기억·호감도·CLI" env -u WORKSPACE "$PY" selftest.py || die "selftest 실패 — personas/ 가 빠졌는지 확인"
 ok "페르소나 6종·기억·CLI 통과"
 
 # ── 7. 웹 서버 ───────────────────────────────────────────────────────────

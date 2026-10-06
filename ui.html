@@ -50,7 +50,7 @@
 <script>
 const $=id=>document.getElementById(id), MODEL_DEFAULT=%MODEL%;
 let P=[], cur=null, TTS=false, STT=false, FACTS=[], MOUTH=null, IMG=null, lastReply='';
-const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const t=ts=>ts?ts.slice(11,16):'';
 fetch('api/models').then(r=>r.json()).then(ms=>$('model').innerHTML=ms.map(m=>`<option ${m===MODEL_DEFAULT?'selected':''}>${m}</option>`).join('')).catch(()=>{});
 async function list(){P=await fetch('api/personas').then(r=>r.json());$('list').innerHTML=P.map(p=>`<div class="pc ${cur===p.name?'on':''}" onclick="pick('${p.name}')"><span class="av">${p.avatar}</span><div style="flex:1"><b>${esc(p.title)}</b><div class="bar"><i style="width:${p.stat.affinity}%"></i></div></div></div>`).join('')}
@@ -58,7 +58,7 @@ function bubble(role,text,ts){const d=document.createElement('div');d.className=
 async function pick(name){cur=name;const p=P.find(x=>x.name===name);$('tav').textContent=p.avatar;$('ttl').textContent=p.title;$('chat').innerHTML='';const s=await fetch('api/state/'+name).then(r=>r.json());TTS=s.tts;STT=s.stt;MOUTH=s.mouth;$('ttsnote').textContent=(TTS?'🔊 TTS 연결됨':'TTS 없음')+' · '+(STT?'🎤 STT 연결됨':'STT 없음 (meeting-local :8767)');$('mic').hidden=!STT;$('autoL').hidden=!(STT&&TTS);$('clipBtn').hidden=!s.avatar;
   $('stage').hidden=!s.image;if(s.image){IMG=new Image();IMG.onload=draw;IMG.src='api/image/'+name+'?'+Date.now()}$('hint').textContent=MOUTH?'':'입 위치를 한 번 클릭해 주세요';s.history.forEach(m=>bubble(m.role,m.content,m.ts));if(s.greet)bubble('assistant',s.greet,new Date().toISOString());stat(s.stat);facts(s.facts);list();$('in').focus()}
 function stat(s){$('tst').textContent=`호감도 ${s.affinity} · 대화 ${s.turns}턴`}
-function facts(fs){FACTS=fs;$('facts').innerHTML=fs.map(f=>`<div class="f"><input value="${esc(f.key)}" data-k="${esc(f.key)}" disabled><input value="${esc(f.value)}" onchange="setFact('${esc(f.key)}',this.value)"><button onclick="delFact('${esc(f.key)}')">✕</button></div>`).join('')||'<div style="font-size:12px;color:var(--muted)">대화하면서 자동으로 쌓입니다</div>'}
+function facts(fs){FACTS=fs;$('facts').innerHTML=fs.map((f,i)=>`<div class="f"><input value="${esc(f.key)}" disabled><input value="${esc(f.value)}" onchange="setFact(FACTS[${i}].key,this.value)"><button onclick="delFact(FACTS[${i}].key)">✕</button></div>`).join('')||'<div style="font-size:12px;color:var(--muted)">대화하면서 자동으로 쌓입니다</div>'}
 async function send(e){e.preventDefault();const text=$('in').value.trim();if(!text||!cur)return false;$('in').value='';$('go').disabled=true;bubble('user',text,new Date().toISOString());
   const d=bubble('assistant','',new Date().toISOString());$('typing').textContent='…입력 중';let out='';
   try{const r=await fetch('api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({persona:cur,text,model:$('model').value,tone:+$('tone').value,length:+$('len').value})});

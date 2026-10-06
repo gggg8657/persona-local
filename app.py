@@ -162,6 +162,9 @@ def system_prompt(c, persona, tone=1, length=1):
     return "\n".join(x for x in (GOAL, p["prompt"], TONES.get(int(tone), ""), LENS.get(int(length), ""), mem) if x)
 
 
+MULTI = {"취향", "좋아하는 것", "싫어하는 것", "관심사", "취미", "일정", "가족", "기분", "고민", "목표"}  # 값이 여러 개 쌓이는 기억 항목
+
+
 def extract_facts(c, persona, user_text, reply, model):
     """2차 콜: 사용자에 대한 새 사실 0~3개 'key=value' 줄 → facts upsert. 실패해도 대화는 멀쩡해야 한다."""
     known = "; ".join(f"{f['key']}={f['value']}" for f in facts(c, persona)) or "없음"
@@ -176,6 +179,9 @@ def extract_facts(c, persona, user_text, reply, model):
         m = re.match(r"\s*[-*]?\s*([^=:\n]{1,20})\s*[=:]\s*(.{1,80})$", line.strip())
         if m and m.group(1).strip() not in ("없음",) and "없음" != m.group(2).strip():
             k, v = m.group(1).strip(), m.group(2).strip().rstrip(".。")
+            old = c.execute("SELECT value FROM facts WHERE persona=? AND key=?", (persona, k)).fetchone()
+            if old and k in MULTI and v not in old[0]:  # 취향·일정처럼 여러 개 쌓이는 항목은 덧붙인다(덮어쓰면 앞의 것이 사라짐)
+                v = (old[0] + ", " + v)[-120:]
             c.execute("INSERT OR REPLACE INTO facts VALUES(?,?,?,?)", (persona, k, v, now()))
             new.append({"key": k, "value": v})
     return new[:3]
