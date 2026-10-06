@@ -5,15 +5,15 @@
 <style>
   :root{--bg:#fdf7f4;--fg:#2b2b2b;--muted:#8a8a8a;--line:#eadfd8;--acc:#e8637a;--me:#ffe3e8;--bot:#fff}
   *{box-sizing:border-box}[hidden]{display:none!important}body{font:15px/1.6 -apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;background:var(--bg);color:var(--fg);margin:0;height:100vh;display:grid;grid-template-columns:230px 1fr 260px}
-  @media(max-width:900px){body{grid-template-columns:1fr}aside{display:none}}
-  aside{border-right:1px solid var(--line);padding:14px;overflow:auto;background:#fff}aside.r{border-right:none;border-left:1px solid var(--line)}
+  [data-sig]{grid-column:1/-1}
+  aside{border-right:1px solid var(--line);padding:14px;overflow:auto;background:#fff}aside.r{border-right:none;border-left:1px solid var(--line);padding-top:50px}
   h1{font-size:17px;margin:0 0 10px}h1 small{font-weight:400;color:var(--muted);font-size:12px;display:block}
   .pc{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;cursor:pointer;display:flex;gap:10px;align-items:center}.pc.on{border-color:var(--acc);background:#fff5f7}
   .pc .av{font-size:26px}.pc b{display:block;font-size:14px}.pc .bar{height:5px;background:#f1e4e4;border-radius:3px;margin-top:5px}.pc .bar i{display:block;height:5px;background:var(--acc);border-radius:3px}
   main{display:flex;flex-direction:column;min-width:0;height:100vh;overflow:hidden}
-  .top{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;background:#fff}.top b{font-size:16px}.top small{color:var(--muted)}
+  .top{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;background:#fff}.top>div{min-width:0;overflow-wrap:anywhere}.top .link{white-space:nowrap}.top b{font-size:16px}.top small{color:var(--muted)}
   #chat{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:8px}
-  .m{max-width:72%;padding:9px 13px;border-radius:16px;background:var(--bot);border:1px solid var(--line);white-space:pre-wrap;position:relative}
+  .m{max-width:72%;padding:9px 13px;border-radius:16px;background:var(--bot);border:1px solid var(--line);white-space:pre-wrap;overflow-wrap:anywhere;position:relative}
   .m.me{align-self:flex-end;background:var(--me);border-color:#ffd0d8}.m time{display:block;font-size:10px;color:var(--muted);margin-top:3px}
   .m button.sp{position:absolute;right:-30px;top:6px;border:none;background:none;cursor:pointer;font-size:15px}
   .typing{color:var(--muted);font-size:13px;padding:0 16px 6px}
@@ -21,7 +21,7 @@
   input,textarea,select{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:10px}textarea{flex:1;resize:none;height:44px}
   button.go{background:var(--acc);color:#fff;border:none;border-radius:10px;padding:0 18px;font:inherit;font-weight:600;cursor:pointer}button:disabled{opacity:.5}
   h3{font-size:13px;color:var(--muted);margin:14px 0 6px}
-  .f{display:flex;gap:6px;align-items:center;font-size:13px;margin:3px 0}.f input{flex:1;padding:4px 7px;font-size:12px}.f button{border:none;background:none;cursor:pointer;color:var(--muted)}
+  .f{display:flex;gap:6px;align-items:center;font-size:13px;margin:3px 0}.f input{flex:1;min-width:0;padding:4px 7px;font-size:12px}.f button{border:none;background:none;cursor:pointer;color:var(--muted)}
   .set label{display:block;font-size:12px;color:var(--muted);margin-top:8px}.set input[type=range]{width:100%}
   .link{font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline}
   #stage{height:300px;background:linear-gradient(#fff,#fdf0ec);border-bottom:1px solid var(--line);display:flex;justify-content:center;align-items:flex-end;position:relative;overflow:hidden}
@@ -29,6 +29,9 @@
   #hint{position:absolute;left:10px;top:8px;font-size:11px;color:var(--muted)}#spk{position:absolute;right:10px;top:8px;font-size:11px;color:var(--acc)}
   button.mic{border:1px solid var(--line);background:#fff;border-radius:10px;padding:0 14px;font-size:18px;cursor:pointer;user-select:none}button.mic.rec{background:var(--acc);color:#fff;border-color:var(--acc)}
   .auto{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px}
+  @media(max-width:900px){body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto;height:auto}aside.r{display:none}
+    aside:not(.r){overflow:visible;border-right:none;border-bottom:1px solid var(--line);padding:10px 56px 10px 12px}#list{display:flex;gap:8px;overflow-x:auto}#list .pc{flex:0 0 auto;margin:0}
+    main{height:calc(100vh - 130px);min-height:440px}#stage{height:200px}}
 </style>
 <aside><h1>persona <small>AI 캐릭터 대화 · 토이</small></h1><div id="list"></div></aside>
 <main>
