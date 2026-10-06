@@ -12,6 +12,7 @@ import datetime
 import json
 import os
 import re
+import secrets
 import sqlite3
 import sys
 import urllib.error
@@ -41,18 +42,57 @@ def read(p):
 GOAL = read(os.path.join(ROOT, "goal-prompt.md"))
 
 
+def persona_dirs():
+    """기본 캐릭터(저장소 personas/) + 사용자가 만든 캐릭터(데이터 폴더 personas/ — avatar 스튜디오에서 추가)"""
+    return [os.path.join(ROOT, "personas"), os.path.join(WS, "personas")]
+
+
 def load_personas():
     out = {}
-    for fn in sorted(os.listdir(os.path.join(ROOT, "personas"))):
-        if not fn.endswith(".md"):
-            continue
-        head, _, body = read(os.path.join(ROOT, "personas", fn)).partition("\n---\n")
-        p = {k.strip(): v.strip() for k, _, v in (l.partition(":") for l in head.splitlines() if ":" in l)}
-        for k in ("name", "title", "avatar", "greeting"):
-            assert k in p, f"{fn}: {k} 없음"
-        p["prompt"] = body.strip()
-        out[p["name"]] = p
+    for d in persona_dirs():
+        for fn in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+            if not fn.endswith(".md"):
+                continue
+            head, _, body = read(os.path.join(d, fn)).partition("\n---\n")
+            p = {k.strip(): v.strip() for k, _, v in (l.partition(":") for l in head.splitlines() if ":" in l)}
+            for k in ("name", "title", "avatar", "greeting"):
+                assert k in p, f"{fn}: {k} 없음"
+            p["prompt"] = body.strip(); p["dir"] = d
+            out[p["name"]] = p
     return out
+
+
+def img_path(name):
+    return os.path.join(PERSONAS[name]["dir"] if name in PERSONAS else os.path.join(ROOT, "personas"), name + ".png")
+
+
+def persona_new(req):
+    """avatar 스튜디오가 만든 캐릭터를 받아 새 페르소나로: LLM 이 성격 설명으로 설정(제목·첫인사·시스템 프롬프트)을 쓴다"""
+    name, personality = (req.get("name") or "").strip()[:20], (req.get("personality") or "").strip()
+    if not name: raise ValueError("이름이 비었습니다")
+    out = "".join(llm([{"role": "system", "content": "캐릭터 대화 앱의 캐릭터 설정을 쓴다. JSON 하나만: "
+                        '{"title": "한 줄 소개(10자 안팎)", "avatar": "이모지 하나", "greeting": "처음 건네는 말 한 문장", '
+                        '"prompt": "너는 …다. 로 시작하는 시스템 프롬프트 3~5문장: 이름·나이·직업·성격·말투(반말/존댓말)·사용자를 부르는 호칭·대화 방식"}'},
+                       {"role": "user", "content": f"[이름] {name}\n[생김새] {req.get('look', '')}\n[성격·관계] {personality or '친근한 대화 상대'}"}],
+                      temperature=0.5))
+    m = re.search(r"\{.*\}", re.sub(r"<think>.*?</think>", "", out, flags=re.S), re.S)
+    if not m: raise RuntimeError("캐릭터 설정을 만들지 못했습니다: " + out[:200])
+    j = json.loads(m.group(0))
+    slug = "c" + secrets.token_hex(3)
+    d = os.path.join(WS, "personas"); os.makedirs(d, exist_ok=True)
+    one = lambda s: str(s or "").replace("\n", " ").strip()
+    with open(os.path.join(d, slug + ".md"), "w", encoding="utf-8") as f:
+        f.write(f"name: {slug}\ntitle: {one(j.get('title')) or name}\navatar: {one(j.get('avatar')) or '🙂'}\nvoice: KR\n"
+                f"greeting: {one(j.get('greeting')) or '안녕!'}\n---\n{str(j.get('prompt') or '').strip()}\n")
+    with open(os.path.join(d, slug + ".png"), "wb") as f:
+        f.write(base64.b64decode(req["image_b64"]))
+    PERSONAS.clear(); PERSONAS.update(load_personas())
+    mo = req.get("mouth")
+    if mo:
+        c = db()
+        with c:
+            c.execute("INSERT OR REPLACE INTO mouth VALUES(?,?,?,?)", (slug, float(mo["x"]), float(mo["y"]), float(mo.get("w", 0.08))))
+    return {"name": slug, "title": PERSONAS[slug]["title"]}
 
 
 PERSONAS = load_personas()
@@ -299,10 +339,10 @@ class H(BaseHTTPRequestHandler):
                 mouth = c.execute("SELECT x,y,w FROM mouth WHERE persona=?", (m.group(1),)).fetchone()
                 return self._send({"history": history(c, m.group(1), 200), "facts": facts(c, m.group(1)), "stat": stat(c, m.group(1)),
                                    "greet": greet(m.group(1)), "tts": bool(TTS), "stt": up(STT + "/models"), "avatar": up(AVATAR.rsplit("/api", 1)[0] + "/"),
-                                   "mouth": dict(mouth) if mouth else None, "image": os.path.exists(os.path.join(ROOT, "personas", m.group(1) + ".png"))})
+                                   "mouth": dict(mouth) if mouth else None, "image": os.path.exists(img_path(m.group(1)))})
             m = re.fullmatch(r"/api/image/(\w+)", p)
             if m and m.group(1) in PERSONAS:
-                with open(os.path.join(ROOT, "personas", m.group(1) + ".png"), "rb") as f:
+                with open(img_path(m.group(1)), "rb") as f:
                     return self._send(f.read(), "image/png")
             self._send(signed(HTML.replace("%MODEL%", json.dumps(MODEL))).encode(), "text/html; charset=utf-8")
         except Exception as e:
@@ -322,6 +362,8 @@ class H(BaseHTTPRequestHandler):
                 except Exception as e:
                     emit({"error": f"{type(e).__name__}: {e}"})
                 return
+            if p == "/api/persona_new":  # avatar 스튜디오 → 새 캐릭터
+                return self._send(persona_new(req))
             if p == "/api/stt":
                 if not req.get("audio"):
                     raise ValueError("audio 없음")
@@ -331,7 +373,7 @@ class H(BaseHTTPRequestHandler):
             if persona not in PERSONAS:
                 return self._send({"error": "없는 페르소나"}, code=400)
             if p == "/api/avatar":  # 고화질 클립: avatar-local 에 그대로 넘기고 run_id 만 돌려줌 (영상은 avatar-local 에서 재생)
-                with open(os.path.join(ROOT, "personas", persona + ".png"), "rb") as f:
+                with open(img_path(persona), "rb") as f:
                     body = {"photo_b64": base64.b64encode(f.read()).decode(), "photo_name": persona + ".png", "text": req.get("text", ""), "consent": True}
                 r = urllib.request.urlopen(urllib.request.Request(AVATAR, json.dumps(body).encode(), {"Content-Type": "application/json"}), timeout=3600)
                 run_id = None
