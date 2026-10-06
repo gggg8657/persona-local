@@ -56,4 +56,8 @@ with app.db() as c:
 assert all(os.path.exists(os.path.join(app.ROOT, "personas", n + ".png")) for n in app.PERSONAS)
 r3 = app.chat("gf", "텍스트 모드도 그대로", "fake")            # 음성 경로 추가 후 텍스트 경로 회귀 없음
 assert r3["reply"] and r3["stat"]["affinity"] == 3
+# 저작권 표기: 서버가 화면에 붙이는 코드가 있어야 한다 (LICENSE·NOTICE)
+_src = open(__import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "app.py"), encoding="utf-8").read()
+assert "wqkgMjAyNiDquYDrj5nso7wgwrcgZG9uZ2p1a2ltLmRldkBnbWFpbC5jb20=" in _src and "signed(" in _src and "X-Author" in _src, "저작권 표기 누락"
+
 print("selftest OK — voice/avatar paths")
