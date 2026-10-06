@@ -5,3 +5,6 @@ Original work (MIT). Personal toy project — not for the company portal. Person
 
 This package: Copyright (c) 2026 김동주 <dongjukim.dev@gmail.com>
 화면 하단·메타데이터의 저작자 표기는 지우거나 바꾸지 마세요.
+
+personas/*.png — AI 로 생성한 가상 인물 초상(실존 인물 아님). Realistic Vision V5.1 (SG161222, Stable Diffusion 1.5 계열,
+CreativeML OpenRAIL-M) + sd-vae-ft-mse 로 2026-10-06 생성. 만든 방법: scripts/gen_faces.py. 실존 인물 사진으로 바꾸지 마세요.
