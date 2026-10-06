@@ -3,7 +3,10 @@ persona-local
 
 Original work (MIT). Personal toy project — not for the company portal. Personas are fictional characters written for this package.
 
-This package: Copyright (c) 2026 김동주 <dongjukim.dev@gmail.com>
+LLM (not bundled): called via an OpenAI-compatible API; default deployment is Ollama (https://github.com/ollama/ollama, MIT)
+  serving Google Gemma (gemma4:31b, https://ai.google.dev/gemma — see Gemma's terms of use).
+
+This package: Copyright (c) 2026 gggg8657 <dongjukim.dev@gmail.com>
 화면 하단·메타데이터의 저작자 표기는 지우거나 바꾸지 마세요.
 
 personas/*.png — AI 로 생성한 가상 인물 초상(실존 인물 아님). Realistic Vision V5.1 (SG161222, Stable Diffusion 1.5 계열,

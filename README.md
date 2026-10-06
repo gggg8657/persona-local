@@ -39,3 +39,13 @@ TTS_BASE_URL=http://localhost:8771/v1 STT_BASE_URL=http://localhost:8767/v1 pyth
 ## 한계
 - 최근 20턴만 모델에 들어감(요약 압축 없음). 8B 모델은 캐릭터가 가끔 흔들림 → 큰 모델 권장.
 - 사실 추출은 LLM 판단이라 엉뚱한 기억이 들어올 수 있음 → 패널에서 지우면 됨.
+
+## 출처·감사 (Credits)
+
+- 페르소나는 이 패키지를 위해 지어낸 가상 인물입니다.
+- `personas/*.png` — AI 로 생성한 가상 인물 초상(실존 인물 아님). [SG161222/Realistic_Vision_V5.1](https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE) (Stable Diffusion 1.5 계열, CreativeML OpenRAIL-M) + [stabilityai/sd-vae-ft-mse](https://huggingface.co/stabilityai/sd-vae-ft-mse). 생성 스크립트 `scripts/gen_faces.py`
+- 음성·아바타 연결(선택): [tts-local](https://github.com/gggg8657/tts-local), [meeting-local](https://github.com/gggg8657/meeting-local)(STT), [avatar-local](https://github.com/gggg8657/avatar-local)
+- **LLM 실행** — OpenAI 호환 API 로 호출합니다(모델 가중치는 동봉하지 않음). 기본 배포는 [Ollama](https://github.com/ollama/ollama) (MIT) 위의 Google [Gemma](https://ai.google.dev/gemma) `gemma4:31b` — 모델 이용 조건은 Gemma 배포처 참고.
+- 이 도구는 [agent-page-portal](https://github.com/gggg8657/agent-page-portal) 에 연결해 쓰도록 만들었습니다(단독 실행도 됨).
+
+저작권 표기·전체 목록은 `NOTICE` 를 보세요.
