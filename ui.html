@@ -99,7 +99,7 @@ async function onStop(){$('spk').textContent='받아쓰는 중…';const b=new B
   const j=await post('api/stt',{audio:b64});$('spk').textContent='';if(j.text&&j.text.trim()){$('in').value=j.text.trim();voiceTurn=true;$('go').click()}else if($('auto').checked)startRec()}
 $('mic').onmousedown=startRec;$('mic').onmouseup=stopRec;$('mic').ontouchstart=e=>{e.preventDefault();startRec()};$('mic').ontouchend=stopRec;
 $('auto').onchange=()=>{if($('auto').checked)startRec();else stopRec()};
-async function clip(){if(!lastReply)return alert('먼저 답변을 하나 받으세요');$('clipBtn').textContent='클립 생성 중… (수 분)';const j=await post('api/avatar',{persona:cur,text:lastReply});$('clipBtn').textContent='고화질 클립';if(j.video)window.open(j.video,'_blank')}
+async function clip(){if(!lastReply)return alert('먼저 답변을 하나 받으세요');$('clipBtn').textContent='클립 생성 중… (수 분)';const j=await post('api/avatar',{persona:cur,text:lastReply});$('clipBtn').textContent='고화질 클립';if(j.error)return alert('클립 실패: '+j.error);if(j.video)window.open(j.video,'_blank')}
 async function setFact(key,value){facts((await post('api/fact',{persona:cur,key,value})).facts)}
 async function delFact(key){facts((await post('api/fact_del',{persona:cur,key})).facts)}
 async function addFact(){const key=prompt('무엇을 기억할까요? (예: 생일)');if(!key)return;const value=prompt(key+' =');if(value!=null)setFact(key,value)}

@@ -277,6 +277,11 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         p = self.path.split("?")[0]
         try:
+            if self.path.startswith("/api/clip/"):  # avatar-local 결과 영상 중계
+                rid = self.path.rsplit("/", 1)[1]
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}-[0-9a-f]+", rid): raise ValueError("잘못된 클립 ID")
+                with urllib.request.urlopen(AVATAR.rsplit("/api", 1)[0] + f"/api/runs/{rid}/final.mp4", timeout=60) as r:
+                    return self._send(r.read(), "video/mp4")
             if p == "/api/models":
                 return self._send(models())
             if p == "/api/personas":
@@ -331,7 +336,9 @@ class H(BaseHTTPRequestHandler):
                             raise RuntimeError(ev["error"])
                         if "done" in ev:
                             run_id = ev["done"]["run_id"]
-                return self._send({"run_id": run_id, "video": AVATAR.rsplit("/api", 1)[0] + f"/api/runs/{run_id}/final.mp4"})
+                if not run_id:
+                    raise RuntimeError("avatar-local 이 결과 없이 끝났습니다")
+                return self._send({"run_id": run_id, "video": f"api/clip/{run_id}"})  # 영상은 persona 가 중계 — 포털(8700)만 열린 사용자도 재생
             with c:
                 if p == "/api/mouth":
                     c.execute("INSERT OR REPLACE INTO mouth VALUES(?,?,?,?)", (persona, float(req["x"]), float(req["y"]), float(req.get("w", 0.08))))
