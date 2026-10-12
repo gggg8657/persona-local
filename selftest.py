@@ -56,6 +56,30 @@ with app.db() as c:
 assert all(os.path.exists(os.path.join(app.ROOT, "personas", n + ".png")) for n in app.PERSONAS)
 r3 = app.chat("gf", "텍스트 모드도 그대로", "fake")            # 음성 경로 추가 후 텍스트 경로 회귀 없음
 assert r3["reply"] and r3["stat"]["affinity"] == 3
+# 사용자별 폴더(포털 X-Agent-User): 대화·기억·만든 캐릭터는 그 사용자만, 기본 캐릭터는 모두 공유
+import urllib.request, urllib.error, base64 as _b64
+from http.server import ThreadingHTTPServer
+_fake = app.llm
+app.llm = lambda m, *a, **k: '{"title": "시험", "avatar": "🙂", "greeting": "안녕", "prompt": "너는 시험이다."}' if "캐릭터 설정" in m[0]["content"] else _fake(m, *a, **k)
+hs = ThreadingHTTPServer(("127.0.0.1", 0), app.H); threading.Thread(target=hs.serve_forever, daemon=True).start()
+def call(path, user, body=None):
+    r = urllib.request.Request(f"http://127.0.0.1:{hs.server_port}{path}", json.dumps(body).encode() if body is not None else None,
+                               {"Content-Type": "application/json", **({"X-Agent-User": user} if user else {})})
+    with urllib.request.urlopen(r) as x: return x.read()
+call("/api/chat", "alice", {"persona": "gf", "text": "나 앨리스야", "model": "fake"})
+call("/api/fact", "alice", {"persona": "gf", "key": "비밀", "value": "앨리스것"})
+png = open(os.path.join(app.ROOT, "personas", "gf.png"), "rb").read()
+slug = json.loads(call("/api/persona_new", "alice", {"name": "시험", "image_b64": _b64.b64encode(png).decode()}))["name"]
+assert os.path.exists(os.path.join(app.WS, "u", "alice", "personas", slug + ".md"))
+na = {x["name"] for x in json.loads(call("/api/personas", "alice"))}; nb = {x["name"] for x in json.loads(call("/api/personas", "bob"))}
+assert slug in na and slug not in nb and {"gf", "bf"} <= nb and slug not in {x["name"] for x in json.loads(call("/api/personas", None))}
+sa, sb = json.loads(call("/api/state/gf", "alice")), json.loads(call("/api/state/gf", "bob"))
+assert any("앨리스" in h["content"] for h in sa["history"]) and not any("앨리스" in h["content"] for h in sb["history"]) and sb["facts"] == []
+assert not any("앨리스" in h["content"] for h in json.loads(call("/api/state/gf", None))["history"])
+assert call(f"/api/image/{slug}", "alice") == png and call(f"/api/image/{slug}", "bob") != png
+try: call("/api/fact_del", "bob", {"persona": slug, "key": "x"}); raise SystemExit("bob 이 alice 캐릭터를 건드림")
+except urllib.error.HTTPError as e: assert e.code == 400
+hs.shutdown()
 # 저작권 표기: 서버가 화면에 붙이는 코드가 있어야 한다 (LICENSE·NOTICE)
 _src = open(__import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "app.py"), encoding="utf-8").read()
 assert "wqkgMjAyNiBnZ2dnODY1NyDCtyBkb25nanVraW0uZGV2QGdtYWlsLmNvbQ==" in _src and "signed(" in _src and "X-Author" in _src, "저작권 표기 누락"

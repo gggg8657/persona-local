@@ -42,6 +42,9 @@ TTS_BASE_URL=http://localhost:8771/v1 python3 app.py   # tts-local 이 떠 있�
 | `STT_BASE_URL` | `http://localhost:8767/v1` | OpenAI 호환 `/v1/audio/transcriptions` (meeting-local) — 있으면 🎤 |
 | `AVATAR_URL` | `http://localhost:8777/api/run` | avatar-local 이 떠 있으면 "고화질 클립" 버튼 |
 | `WORKSPACE` | `_workspace/` | `persona.db`(대화·기억·호감도) 위치. 포털이 `AGENT_DATA/persona-local` 로 지정 |
+| `BIND` | (모든 인터페이스) | 포털은 `127.0.0.1` 로 띄워 포털을 거쳐서만 열리게 함 |
+
+**사용자별 기록**: 대화·기억·호감도·입 위치·직접 만든 캐릭터(avatar 스튜디오의 "persona 로")는 포털 접속자별로 따로 저장합니다(`WORKSPACE/u/<사용자>/`, 포털의 `X-Agent-User` 헤더 기준). 서버 주인(owner)·헤더 없는 단독 실행은 예전 `WORKSPACE` 그대로라 기존 기록이 그대로 보입니다. 저장소에 동봉된 기본 캐릭터 6개만 모두 공유합니다. 고화질 클립을 avatar-local 에 맡길 때도 같은 사용자 헤더를 넘겨 클립이 그 사용자 폴더에 저장됩니다.
 | `PORT` | 8776 | |
 
 ## 음성 대화 + 아바타

@@ -42,14 +42,14 @@ def read(p):
 GOAL = read(os.path.join(ROOT, "goal-prompt.md"))
 
 
-def persona_dirs():
-    """기본 캐릭터(저장소 personas/) + 사용자가 만든 캐릭터(데이터 폴더 personas/ — avatar 스튜디오에서 추가)"""
-    return [os.path.join(ROOT, "personas"), os.path.join(WS, "personas")]
+def persona_dirs(ws=WS):
+    """기본 캐릭터(저장소 personas/, 모두 공유) + 그 사용자가 만든 캐릭터(사용자 폴더 personas/ — avatar 스튜디오에서 추가)"""
+    return [os.path.join(ROOT, "personas"), os.path.join(ws, "personas")]
 
 
-def load_personas():
+def load_personas(ws=WS):
     out = {}
-    for d in persona_dirs():
+    for d in persona_dirs(ws):
         for fn in sorted(os.listdir(d)) if os.path.isdir(d) else []:
             if not fn.endswith(".md"):
                 continue
@@ -62,11 +62,11 @@ def load_personas():
     return out
 
 
-def img_path(name):
-    return os.path.join(PERSONAS[name]["dir"] if name in PERSONAS else os.path.join(ROOT, "personas"), name + ".png")
+def img_path(P, name):
+    return os.path.join(P[name]["dir"] if name in P else os.path.join(ROOT, "personas"), name + ".png")
 
 
-def persona_new(req):
+def persona_new(req, ws=WS):
     """avatar 스튜디오가 만든 캐릭터를 받아 새 페르소나로: LLM 이 성격 설명으로 설정(제목·첫인사·시스템 프롬프트)을 쓴다"""
     name, personality = (req.get("name") or "").strip()[:20], (req.get("personality") or "").strip()
     if not name: raise ValueError("이름이 비었습니다")
@@ -79,29 +79,30 @@ def persona_new(req):
     if not m: raise RuntimeError("캐릭터 설정을 만들지 못했습니다: " + out[:200])
     j = json.loads(m.group(0))
     slug = "c" + secrets.token_hex(3)
-    d = os.path.join(WS, "personas"); os.makedirs(d, exist_ok=True)
+    d = os.path.join(ws, "personas"); os.makedirs(d, exist_ok=True)
     one = lambda s: str(s or "").replace("\n", " ").strip()
     with open(os.path.join(d, slug + ".md"), "w", encoding="utf-8") as f:
         f.write(f"name: {slug}\ntitle: {one(j.get('title')) or name}\navatar: {one(j.get('avatar')) or '🙂'}\nvoice: KR\n"
                 f"greeting: {one(j.get('greeting')) or '안녕!'}\n---\n{str(j.get('prompt') or '').strip()}\n")
     with open(os.path.join(d, slug + ".png"), "wb") as f:
         f.write(base64.b64decode(req["image_b64"]))
-    PERSONAS.clear(); PERSONAS.update(load_personas())
+    P = load_personas(ws)
+    if ws == WS: PERSONAS.clear(); PERSONAS.update(P)
     mo = req.get("mouth")
     if mo:
-        c = db()
+        c = db(ws)
         with c:
             c.execute("INSERT OR REPLACE INTO mouth VALUES(?,?,?,?)", (slug, float(mo["x"]), float(mo["y"]), float(mo.get("w", 0.08))))
-    return {"name": slug, "title": PERSONAS[slug]["title"]}
+    return {"name": slug, "title": P[slug]["title"]}
 
 
 PERSONAS = load_personas()
 
 
 # ── DB ──────────────────────────────────────────────────────────────────
-def db():
-    os.makedirs(WS, exist_ok=True)
-    c = sqlite3.connect(os.path.join(WS, "persona.db"), timeout=10)
+def db(ws=WS):
+    os.makedirs(ws, exist_ok=True)
+    c = sqlite3.connect(os.path.join(ws, "persona.db"), timeout=10)
     c.row_factory = sqlite3.Row
     c.executescript("""
     CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, persona TEXT, role TEXT, content TEXT, ts TEXT);
@@ -195,8 +196,8 @@ TONES = {0: "말투: 담백하고 차분하게.", 1: "", 2: "말투: 애교 있�
 LENS = {0: "한 번에 1~2문장.", 1: "", 2: "한 번에 4~6문장, 조금 더 길게."}
 
 
-def system_prompt(c, persona, tone=1, length=1):
-    p = PERSONAS[persona]
+def system_prompt(c, P, persona, tone=1, length=1):
+    p = P[persona]
     fs = facts(c, persona)
     mem = "\n[기억] " + "; ".join(f"{f['key']}={f['value']}" for f in fs) if fs else "\n[기억] 아직 없음"
     return "\n".join(x for x in (GOAL, p["prompt"], TONES.get(int(tone), ""), LENS.get(int(length), ""), mem) if x)
@@ -227,16 +228,17 @@ def extract_facts(c, persona, user_text, reply, model):
     return new[:3]
 
 
-def chat(persona, text, model=MODEL, tone=1, length=1, emit=lambda ev: None):
-    if persona not in PERSONAS:
+def chat(persona, text, model=MODEL, tone=1, length=1, emit=lambda ev: None, ws=WS):
+    P = load_personas(ws)
+    if persona not in P:
         raise ValueError("없는 페르소나")
     text = text.strip()
     if not text:
         raise ValueError("빈 메시지")
-    c = db()
+    c = db(ws)
     with c:
         c.execute("INSERT INTO messages(persona,role,content,ts) VALUES(?,?,?,?)", (persona, "user", text, now()))
-        msgs = [{"role": "system", "content": system_prompt(c, persona, tone, length)}] + \
+        msgs = [{"role": "system", "content": system_prompt(c, P, persona, tone, length)}] + \
                [{"role": m["role"], "content": m["content"]} for m in history(c, persona)]
     reply = llm(msgs, model, on_token=lambda t: emit({"token": t}))
     with c:
@@ -247,19 +249,20 @@ def chat(persona, text, model=MODEL, tone=1, length=1, emit=lambda ev: None):
     return {"reply": reply, "new_facts": new, "stat": stat(c, persona), "facts": facts(c, persona)}
 
 
-def greet(persona, model=MODEL):
+def greet(persona, model=MODEL, ws=WS):
     """8시간 넘게 안 봤으면 먼저 인사 (기억이 있으면 그걸 끌어서). 반환: 인사 문자열 또는 None"""
-    c = db()
+    P = load_personas(ws)
+    c = db(ws)
     s = stat(c, persona)
     if s["last_ts"] and (datetime.datetime.now() - datetime.datetime.fromisoformat(s["last_ts"])).total_seconds() < GREET_AFTER_H * 3600:
         return None
-    p = PERSONAS[persona]
+    p = P[persona]
     fs = facts(c, persona)
     if not fs:
         g = p["greeting"]
     else:
         try:
-            g = llm([{"role": "system", "content": system_prompt(c, persona)},
+            g = llm([{"role": "system", "content": system_prompt(c, P, persona)},
                      {"role": "user", "content": "(상대가 오랜만에 들어왔다. 기억 중 하나를 자연스럽게 언급하며 먼저 인사해라. 2문장.)"}], model)
         except Exception:
             g = p["greeting"]
@@ -312,6 +315,22 @@ def signed(html):
     return html
 
 
+def user_ws(h):
+    """포털이 넘긴 사용자별 작업 폴더. owner(서버 주인)·헤더 없음(단독 실행) = 예전 WORKSPACE 그대로"""
+    u = (h.headers.get("X-Agent-User") or "owner").strip()
+    if u == "owner":
+        return WS
+    d = os.path.join(WS, "u", re.sub(r"[^A-Za-z0-9_.-]", "_", u)[:64] or "_")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def fwd(h):
+    """avatar-local 로 넘길 때 사용자 헤더를 그대로 (클립도 그 사용자 폴더에 저장·조회)"""
+    u = h.headers.get("X-Agent-User")
+    return {"X-Agent-User": u} if u else {}
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -323,26 +342,27 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         p = self.path.split("?")[0]
         try:
+            ws = user_ws(self); P = load_personas(ws)
             if self.path.startswith("/api/clip/"):  # avatar-local 결과 영상 중계
                 rid = self.path.rsplit("/", 1)[1]
                 if not re.fullmatch(r"\d{4}-\d{2}-\d{2}-[0-9a-f]+", rid): raise ValueError("잘못된 클립 ID")
-                with urllib.request.urlopen(AVATAR.rsplit("/api", 1)[0] + f"/api/runs/{rid}/final.mp4", timeout=60) as r:
+                with urllib.request.urlopen(urllib.request.Request(AVATAR.rsplit("/api", 1)[0] + f"/api/runs/{rid}/final.mp4", headers=fwd(self)), timeout=60) as r:
                     return self._send(r.read(), "video/mp4")
             if p == "/api/models":
                 return self._send(models())
             if p == "/api/personas":
-                c = db()
-                return self._send([{k: v for k, v in x.items() if k != "prompt"} | {"stat": stat(c, x["name"])} for x in PERSONAS.values()])
+                c = db(ws)
+                return self._send([{k: v for k, v in x.items() if k not in ("prompt", "dir")} | {"stat": stat(c, x["name"])} for x in P.values()])
             m = re.fullmatch(r"/api/state/(\w+)", p)
-            if m and m.group(1) in PERSONAS:
-                c = db()
+            if m and m.group(1) in P:
+                c = db(ws)
                 mouth = c.execute("SELECT x,y,w FROM mouth WHERE persona=?", (m.group(1),)).fetchone()
                 return self._send({"history": history(c, m.group(1), 200), "facts": facts(c, m.group(1)), "stat": stat(c, m.group(1)),
-                                   "greet": greet(m.group(1)), "tts": bool(TTS), "stt": up(STT + "/models"), "avatar": up(AVATAR.rsplit("/api", 1)[0] + "/"),
-                                   "mouth": dict(mouth) if mouth else None, "image": os.path.exists(img_path(m.group(1)))})
+                                   "greet": greet(m.group(1), ws=ws), "tts": bool(TTS), "stt": up(STT + "/models"), "avatar": up(AVATAR.rsplit("/api", 1)[0] + "/"),
+                                   "mouth": dict(mouth) if mouth else None, "image": os.path.exists(img_path(P, m.group(1)))})
             m = re.fullmatch(r"/api/image/(\w+)", p)
-            if m and m.group(1) in PERSONAS:
-                with open(img_path(m.group(1)), "rb") as f:
+            if m and m.group(1) in P:
+                with open(img_path(P, m.group(1)), "rb") as f:
                     return self._send(f.read(), "image/png")
             self._send(signed(HTML.replace("%MODEL%", json.dumps(MODEL))).encode(), "text/html; charset=utf-8")
         except Exception as e:
@@ -352,30 +372,31 @@ class H(BaseHTTPRequestHandler):
         req = json.loads(self.rfile.read(int(self.headers["Content-Length"])) or b"{}")
         p = self.path.split("?")[0]
         try:
+            ws = user_ws(self); P = load_personas(ws)
             if p == "/api/chat":
                 self.send_response(200); self.send_header("Content-Type", "text/event-stream; charset=utf-8"); self.send_header("Cache-Control", "no-cache"); self.end_headers()
 
                 def emit(ev):
                     self.wfile.write(f"data: {json.dumps(ev, ensure_ascii=False)}\n\n".encode()); self.wfile.flush()
                 try:
-                    emit({"done": chat(req.get("persona", ""), req.get("text", ""), req.get("model") or MODEL, req.get("tone", 1), req.get("length", 1), emit)})
+                    emit({"done": chat(req.get("persona", ""), req.get("text", ""), req.get("model") or MODEL, req.get("tone", 1), req.get("length", 1), emit, ws)})
                 except Exception as e:
                     emit({"error": f"{type(e).__name__}: {e}"})
                 return
             if p == "/api/persona_new":  # avatar 스튜디오 → 새 캐릭터
-                return self._send(persona_new(req))
+                return self._send(persona_new(req, ws))
             if p == "/api/stt":
                 if not req.get("audio"):
                     raise ValueError("audio 없음")
                 return self._send({"text": stt(req["audio"])})
-            c = db()
+            c = db(ws)
             persona = req.get("persona", "")
-            if persona not in PERSONAS:
+            if persona not in P:
                 return self._send({"error": "없는 페르소나"}, code=400)
             if p == "/api/avatar":  # 고화질 클립: avatar-local 에 그대로 넘기고 run_id 만 돌려줌 (영상은 avatar-local 에서 재생)
-                with open(img_path(persona), "rb") as f:
+                with open(img_path(P, persona), "rb") as f:
                     body = {"photo_b64": base64.b64encode(f.read()).decode(), "photo_name": persona + ".png", "text": req.get("text", ""), "consent": True}
-                r = urllib.request.urlopen(urllib.request.Request(AVATAR, json.dumps(body).encode(), {"Content-Type": "application/json"}), timeout=3600)
+                r = urllib.request.urlopen(urllib.request.Request(AVATAR, json.dumps(body).encode(), {"Content-Type": "application/json", **fwd(self)}), timeout=3600)
                 run_id = None
                 for line in r:
                     if line.startswith(b"data: "):
@@ -403,7 +424,7 @@ class H(BaseHTTPRequestHandler):
                 elif p == "/api/tts":
                     if not TTS:
                         return self._send({"error": "TTS 미연결"}, code=400)
-                    return self._send(tts(req.get("text", ""), PERSONAS[persona].get("voice")), "audio/mpeg")
+                    return self._send(tts(req.get("text", ""), P[persona].get("voice")), "audio/mpeg")
                 else:
                     return self._send({"error": "not found"}, code=404)
             self._send({"facts": facts(c, persona)})
@@ -423,4 +444,4 @@ if __name__ == "__main__":
         print(f"\n(호감도 {r['stat']['affinity']}" + (f" · 새 기억 {', '.join(f['key'] for f in r['new_facts'])}" if r["new_facts"] else "") + ")")
         sys.exit(0)
     print(f"persona local → http://localhost:{PORT}  (model={MODEL}, llm={LLM_API} {LLM_BASE}, tts={TTS or '없음'}, stt={STT}, personas={len(PERSONAS)})  {_SIG}")
-    ThreadingHTTPServer(("", PORT), H).serve_forever()
+    ThreadingHTTPServer((os.environ.get("BIND", ""), PORT), H).serve_forever()
