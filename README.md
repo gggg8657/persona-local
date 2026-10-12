@@ -2,6 +2,7 @@
 
 > 캐릭터를 골라 대화하면, 대화에서 뽑은 기억·호감도를 다음 응답에 붙이고, 연결된 TTS·STT 도구로 음성을 주고받는 로컬 LLM 캐릭터 채팅. 여자친구/남자친구/선배 멘토/모의 면접관/영어 회화 파트너/츤데레 친구 6종.
 > **개인 토이 프로젝트**입니다. 사내 에이전트 포털 목록에는 노출하지 않습니다(tools.json `hidden`). 파이썬 표준 라이브러리 + sqlite, 외부 통신 없음.
+> ⚠️ 연구·내부 시험용 프로토타입입니다(배포·상업 서비스용 아님). 제3자 구성요소의 라이선스는 THIRD_PARTY_NOTICES.md 를 확인하세요.
 
 ![대화 화면 — 캐릭터 목록, 아바타, 대화 기록, 입력, 기억·설정](docs/img/chat.jpg)
 
@@ -72,9 +73,13 @@ TTS_BASE_URL=http://localhost:8771/v1 STT_BASE_URL=http://localhost:8767/v1 pyth
 ## 출처·감사 (Credits)
 
 - 페르소나는 이 패키지를 위해 지어낸 가상 인물입니다.
-- `personas/*.png` — AI 로 생성한 가상 인물 초상(실존 인물 아님). [SG161222/Realistic_Vision_V5.1](https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE) (Stable Diffusion 1.5 계열, CreativeML OpenRAIL-M) + [stabilityai/sd-vae-ft-mse](https://huggingface.co/stabilityai/sd-vae-ft-mse). 생성 스크립트 `scripts/gen_faces.py`
-- 음성·아바타 연결(선택): [tts-local](https://github.com/gggg8657/tts-local), [meeting-local](https://github.com/gggg8657/meeting-local)(STT), [avatar-local](https://github.com/gggg8657/avatar-local)
-- **LLM 실행** — OpenAI 호환 API 로 호출합니다(모델 가중치는 동봉하지 않음). 기본 배포는 [Ollama](https://github.com/ollama/ollama) (MIT) 위의 Google [Gemma](https://ai.google.dev/gemma) `gemma4:31b` — 모델 이용 조건은 Gemma 배포처 참고.
+- `personas/*.png` — AI 로 생성한 가상 인물 초상(실존 인물 아님). [SG161222/Realistic_Vision_V5.1](https://huggingface.co/SG161222/Realistic_Vision_V5.1_noVAE) (Stable Diffusion 1.5 계열, CreativeML OpenRAIL-M — **사용 조건 확인 중 [#1](https://github.com/gggg8657/persona-local/issues/1)**) + [stabilityai/sd-vae-ft-mse](https://huggingface.co/stabilityai/sd-vae-ft-mse) (MIT). 생성 스크립트 `scripts/gen_faces.py`(diffusers Apache-2.0, PyTorch BSD-3). 상업 이용 시: `personas/<이름>.png` 를 직접 그린 그림 등 권리가 분명한 이미지로 바꾸세요(코드 변경 없음).
+- **LLM 실행** — OpenAI 호환 API 로 호출합니다(모델 가중치는 동봉하지 않음). 기본 배포는 [Ollama](https://github.com/ollama/ollama) (MIT) 위의 Google [Gemma 4](https://huggingface.co/google/gemma-4-31B-it) `gemma4:31b` (Apache-2.0), 단독 실행 기본값 [Qwen3](https://huggingface.co/Qwen/Qwen3-8B) `qwen3:8b` (Apache-2.0).
+- 음성·아바타 연결(선택): [tts-local](https://github.com/gggg8657/tts-local), [meeting-local](https://github.com/gggg8657/meeting-local)(STT), [avatar-local](https://github.com/gggg8657/avatar-local) — 각 저장소의 제3자 조건을 따릅니다.
 - 이 도구는 [agent-page-portal](https://github.com/gggg8657/agent-page-portal) 에 연결해 쓰도록 만들었습니다(단독 실행도 됨).
 
-저작권 표기·전체 목록은 `NOTICE` 를 보세요.
+전체 목록·라이선스·상업 이용 여부는 `THIRD_PARTY_NOTICES.md`, 저작권 표기는 `NOTICE` 를 보세요.
+
+## 만든 사람
+
+DongJu Kim (gggg8657) — 설계·구현
