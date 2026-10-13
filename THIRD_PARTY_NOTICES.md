@@ -1,6 +1,6 @@
 # 제3자 구성요소 (Third-Party Notices) — persona-local
 
-이 저장소의 원저작물은 DongJu Kim(gggg8657)이 작성했다(`NOTICE`, `LICENSE`). 아래 제3자 구성요소는 각자의 라이선스를 따르며, 이 저장소의 MIT 라이선스로 바뀌지 않는다.
+이 저장소의 원저작물은 DongJu Kim(gggg8657)이 작성했다(`NOTICE`, `LICENSE`). 아래 제3자 구성요소는 각자의 라이선스를 따르며, 이 저장소의 라이선스(PolyForm Noncommercial 1.0.0)로 바뀌지 않는다.
 조사 기준: 2026-10-12, 저장소의 실제 파일(`app.py` import, `setup.sh`, `scripts/gen_faces.py`, `personas/`, `ui.html`). 라이선스는 패키지/모델 카드/GitHub LICENSE 에서 확인.
 
 | 이름 | 버전 | 쓰임 | 라이선스 | 링크 | 상업 이용 | 비고 |
