@@ -18,6 +18,7 @@ import sys
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import portal_auth  # 포털 서명 확인 관문·오류 문장 정리(원본 agent-page-portal/sdk/portal_auth.py)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WS = os.environ.get("WORKSPACE") or os.path.join(ROOT, "_workspace")  # 포털이 AGENT_DATA/<도구> 로 모아 줌
@@ -274,7 +275,7 @@ def greet(persona, model=MODEL, ws=WS):
 
 def stt(audio_b64):
     """STT_BASE_URL 로 전달 (JSON base64). 반환 text."""
-    req = urllib.request.Request(STT + "/audio/transcriptions", json.dumps({"file": audio_b64}).encode(), {"Content-Type": "application/json"})
+    req = urllib.request.Request(STT + "/audio/transcriptions", json.dumps({"file": audio_b64}).encode(), {"Content-Type": "application/json", **portal_auth.sign("_service")})
     with urllib.request.urlopen(req, timeout=600) as r:
         return json.load(r).get("text", "")
 
@@ -290,7 +291,7 @@ def up(url):
 
 def tts(text, voice):
     body = {"model": "tts", "input": text, "voice": voice or "KR", "response_format": "mp3"}
-    with urllib.request.urlopen(urllib.request.Request(TTS + "/audio/speech", json.dumps(body).encode(), {"Content-Type": "application/json"}), timeout=600) as r:
+    with urllib.request.urlopen(urllib.request.Request(TTS + "/audio/speech", json.dumps(body).encode(), {"Content-Type": "application/json", **portal_auth.sign("_service")}), timeout=600) as r:
         return r.read()
 
 
@@ -327,8 +328,7 @@ def user_ws(h):
 
 def fwd(h):
     """avatar-local 로 넘길 때 사용자 헤더를 그대로 (클립도 그 사용자 폴더에 저장·조회)"""
-    u = h.headers.get("X-Agent-User")
-    return {"X-Agent-User": u} if u else {}
+    return portal_auth.sign(h.headers.get("X-Agent-User"))   # 사용자 헤더 + 포털 서명
 
 
 class H(BaseHTTPRequestHandler):
@@ -364,9 +364,11 @@ class H(BaseHTTPRequestHandler):
             if m and m.group(1) in P:
                 with open(img_path(P, m.group(1)), "rb") as f:
                     return self._send(f.read(), "image/png")
+            if self.path.split("?")[0].startswith("/api/"):   # 없는 API 경로는 화면 대신 JSON 404
+                return self._send({"error": "not found"}, code=404)
             self._send(signed(HTML.replace("%MODEL%", json.dumps(MODEL))).encode(), "text/html; charset=utf-8")
         except Exception as e:
-            self._send({"error": f"{type(e).__name__}: {e}"}, code=500)
+            self._send({"error": portal_auth.scrub(f"{type(e).__name__}: {e}")}, code=500)
 
     def do_POST(self):
         req = json.loads(self.rfile.read(int(self.headers["Content-Length"])) or b"{}")
@@ -381,7 +383,7 @@ class H(BaseHTTPRequestHandler):
                 try:
                     emit({"done": chat(req.get("persona", ""), req.get("text", ""), req.get("model") or MODEL, req.get("tone", 1), req.get("length", 1), emit, ws)})
                 except Exception as e:
-                    emit({"error": f"{type(e).__name__}: {e}"})
+                    emit({"error": portal_auth.scrub(f"{type(e).__name__}: {e}")})
                 return
             if p == "/api/persona_new":  # avatar 스튜디오 → 새 캐릭터
                 return self._send(persona_new(req, ws))
@@ -431,7 +433,7 @@ class H(BaseHTTPRequestHandler):
         except (ValueError, KeyError) as e:
             self._send({"error": str(e)}, code=400)
         except Exception as e:
-            self._send({"error": f"{type(e).__name__}: {e}"}, code=500)
+            self._send({"error": portal_auth.scrub(f"{type(e).__name__}: {e}")}, code=500)
 
 
 if __name__ == "__main__":
@@ -444,4 +446,4 @@ if __name__ == "__main__":
         print(f"\n(호감도 {r['stat']['affinity']}" + (f" · 새 기억 {', '.join(f['key'] for f in r['new_facts'])}" if r["new_facts"] else "") + ")")
         sys.exit(0)
     print(f"persona local → http://localhost:{PORT}  (model={MODEL}, llm={LLM_API} {LLM_BASE}, tts={TTS or '없음'}, stt={STT}, personas={len(PERSONAS)})  {_SIG}")
-    ThreadingHTTPServer((os.environ.get("BIND", ""), PORT), H).serve_forever()
+    ThreadingHTTPServer((os.environ.get("BIND", "127.0.0.1"), PORT), portal_auth.install(H, "persona-local")).serve_forever()

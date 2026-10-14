@@ -76,7 +76,9 @@ assert slug in na and slug not in nb and {"gf", "bf"} <= nb and slug not in {x["
 sa, sb = json.loads(call("/api/state/gf", "alice")), json.loads(call("/api/state/gf", "bob"))
 assert any("앨리스" in h["content"] for h in sa["history"]) and not any("앨리스" in h["content"] for h in sb["history"]) and sb["facts"] == []
 assert not any("앨리스" in h["content"] for h in json.loads(call("/api/state/gf", None))["history"])
-assert call(f"/api/image/{slug}", "alice") == png and call(f"/api/image/{slug}", "bob") != png
+assert call(f"/api/image/{slug}", "alice") == png
+try: call(f"/api/image/{slug}", "bob"); raise SystemExit("bob 이 alice 캐릭터 그림을 받음")
+except urllib.error.HTTPError as e: assert e.code == 404   # 남의 캐릭터 그림 = 없는 API 경로(JSON 404)
 try: call("/api/fact_del", "bob", {"persona": slug, "key": "x"}); raise SystemExit("bob 이 alice 캐릭터를 건드림")
 except urllib.error.HTTPError as e: assert e.code == 400
 hs.shutdown()
