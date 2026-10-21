@@ -82,6 +82,44 @@ except urllib.error.HTTPError as e: assert e.code == 404   # 남의 캐릭터 �
 try: call("/api/fact_del", "bob", {"persona": slug, "key": "x"}); raise SystemExit("bob 이 alice 캐릭터를 건드림")
 except urllib.error.HTTPError as e: assert e.code == 400
 hs.shutdown()
+# 브라우저가 떠나도(첫 토큰 뒤 쓰기가 BrokenPipeError) 대화는 끝까지 — 답이 대화 기록에 남고 서버 오류·트레이스백 없음
+import io, sys, tempfile, threading, urllib.request
+from http.server import ThreadingHTTPServer
+class Cut:
+    def __init__(s, f, n): s.f, s.n = f, n
+    def write(s, b):
+        s.n -= 1
+        if s.n < 0: raise BrokenPipeError(32, "Broken pipe")
+        return s.f.write(b)
+    def flush(s): pass
+    def __getattr__(s, k): return getattr(s.f, k)
+class CutH(app.H):
+    def setup(s): super().setup(); s.wfile = Cut(s.wfile, 2)  # 응답 머리 + 첫 이벤트까지만 닿음
+ERRS = []
+class Srv(ThreadingHTTPServer):
+    def handle_error(s, req, addr): ERRS.append(sys.exc_info()[1])
+def cut_post(path, body, user="alice"):
+    srv = Srv(("127.0.0.1", 0), CutH); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    err0, sys.stderr = sys.stderr, io.StringIO()
+    try:
+        r = urllib.request.Request(f"http://127.0.0.1:{srv.server_address[1]}{path}", json.dumps(body).encode(), {"Content-Type": "application/json", "X-Agent-User": user})
+        got = urllib.request.urlopen(r).read().decode()
+    finally:
+        cap, sys.stderr = sys.stderr.getvalue(), err0
+    srv.shutdown(); srv.server_close()
+    assert got.count("data: ") == 1 and not ERRS and "Traceback" not in cap and cap.count("연결 끊김") == 1, (got, ERRS, cap)
+    return got
+def fake2(messages, model=None, on_token=None, temperature=0.8):
+    if messages[0]["role"] == "user": return "없음"
+    for part in ("떠난 뒤에도 ", "답은 남아"):
+        on_token and on_token(part)
+    return "떠난 뒤에도 답은 남아"
+app.llm = fake2
+cut_post("/api/chat", {"persona": "gf", "text": "나 떠날게", "model": "fake"}, user="carol")
+with app.db(os.path.join(app.WS, "u", "carol")) as c:
+    assert [(h["role"], h["content"]) for h in app.history(c, "gf")] == [("user", "나 떠날게"), ("assistant", "떠난 뒤에도 답은 남아")]
+app.llm = _fake
+
 # 저작권 표기: 서버가 화면에 붙이는 코드가 있어야 한다 (LICENSE·NOTICE)
 _src = open(__import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "app.py"), encoding="utf-8").read()
 assert "wqkgMjAyNiBnZ2dnODY1NyDCtyBkb25nanVraW0uZGV2QGdtYWlsLmNvbQ==" in _src and "signed(" in _src and "X-Author" in _src, "저작권 표기 누락"
