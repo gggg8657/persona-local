@@ -275,7 +275,7 @@ def greet(persona, model=MODEL, ws=WS):
 
 def stt(audio_b64):
     """STT_BASE_URL 로 전달 (JSON base64). 반환 text."""
-    req = urllib.request.Request(STT + "/audio/transcriptions", json.dumps({"file": audio_b64}).encode(), {"Content-Type": "application/json", **portal_auth.sign("_service")})
+    req = urllib.request.Request(STT + "/audio/transcriptions", json.dumps({"file": audio_b64}).encode(), {"Content-Type": "application/json", **portal_auth.sign("_service", "meeting-local")})
     with urllib.request.urlopen(req, timeout=600) as r:
         return json.load(r).get("text", "")
 
@@ -291,7 +291,7 @@ def up(url):
 
 def tts(text, voice):
     body = {"model": "tts", "input": text, "voice": voice or "KR", "response_format": "mp3"}
-    with urllib.request.urlopen(urllib.request.Request(TTS + "/audio/speech", json.dumps(body).encode(), {"Content-Type": "application/json", **portal_auth.sign("_service")}), timeout=600) as r:
+    with urllib.request.urlopen(urllib.request.Request(TTS + "/audio/speech", json.dumps(body).encode(), {"Content-Type": "application/json", **portal_auth.sign("_service", "tts-local")}), timeout=600) as r:
         return r.read()
 
 
@@ -328,7 +328,7 @@ def user_ws(h):
 
 def fwd(h):
     """avatar-local 로 넘길 때 사용자 헤더를 그대로 (클립도 그 사용자 폴더에 저장·조회)"""
-    return portal_auth.sign(h.headers.get("X-Agent-User"))   # 사용자 헤더 + 포털 서명
+    return portal_auth.sign(h.headers.get("X-Agent-User"), "avatar-local")   # 사용자 헤더 + 포털 서명
 
 
 def safe_emit(wfile):
